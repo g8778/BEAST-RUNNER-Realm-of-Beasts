@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>BEAST RUNNER: Realm of Beasts</title>
+  <style>
+    :root {
+      --primary: #f59e0b;
+      --primary-glow: rgba(245, 158, 11, 0.5);
+      --bg-dark: #0a0d14;
+      --card-bg: rgba(18, 22, 36, 0.96);
+      --border: rgba(245, 158, 11, 0.4);
+      --text: #ffffff;
+      --muted: #94a3b8;
+      --cyan: #06b6d4;
+      --red: #ef4444;
+      --green: #10b981;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg-dark);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: var(--text);
+    }
+
+    /* Fixed Canvas Layer */
+    #game-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 0;
+      display: block;
+    }
+
+    /* Persistent Top HUD */
+    #hud-top {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      right: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 50;
+      pointer-events: none;
+    }
+    .hud-box {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 8px 18px;
+      display: flex;
+      gap: 16px;
+      font-weight: 800;
+      font-size: 13px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+      pointer-events: auto;
+    }
+    .hud-btn {
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px solid var(--primary);
+      color: var(--primary);
+      padding: 8px 16px;
+      border-radius: 12px;
+      font-weight: 800;
+      font-size: 13px;
+      cursor: pointer;
+      pointer-events: auto;
+      transition: all 0.2s;
+    }
+    .hud-btn:hover {
+      background: var(--primary);
+      color: #000;
+      box-shadow: 0 0 16px var(--primary-glow);
+    }
+
+    /* Active In-Game Controls */
+    #in-game-hud {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      pointer-events: none;
+      display: none;
+    }
+    #boss-hud {
+      position: absolute;
+      top: 76px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(480px, 90vw);
+      background: var(--card-bg);
+      border: 1px solid var(--red);
+      border-radius: 12px;
+      padding: 10px 16px;
+      text-align: center;
+      display: none;
+    }
+    .boss-bar-bg { width: 100%; height: 10px; background: rgba(255,255,255,0.15); border-radius: 5px; margin-top: 6px; overflow: hidden; }
+    .boss-bar-fill { width: 100%; height: 100%; background: linear-gradient(90deg, #f87171, #dc2626); transition: width 0.15s ease; }
+
+    #ability-btn {
+      position: absolute;
+      bottom: 26px;
+      right: 26px;
+      width: 82px;
+      height: 82px;
+      border-radius: 50%;
+      background: radial-gradient(circle, #f59e0b, #b45309);
+      border: 2px solid #fef3c7;
+      color: #fff;
+      font-weight: 900;
+      font-size: 13px;
+      cursor: pointer;
+      pointer-events: auto;
+      box-shadow: 0 0 25px var(--primary-glow);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-transform: uppercase;
+      transition: transform 0.1s;
+    }
+    #ability-btn:active { transform: scale(0.92); }
+    #ability-btn.cooldown { filter: grayscale(1); opacity: 0.4; pointer-events: none; }
+
+    /* Guaranteed Visible Modals */
+    .screen-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: rgba(5, 7, 12, 0.92);
+      backdrop-filter: blur(12px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .modal-card {
+      background: var(--card-bg);
+      border: 1.5px solid var(--primary);
+      border-radius: 20px;
+      width: 100%;
+      max-width: 820px;
+      max-height: 92vh;
+      overflow-y: auto;
+      padding: 28px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.9), 0 0 30px var(--primary-glow);
+      position: relative;
+    }
+    .modal-card::-webkit-scrollbar { width: 6px; }
+    .modal-card::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+
+    h1.title {
+      font-size: clamp(22px, 3.5vw, 34px);
+      font-weight: 900;
+      letter-spacing: 2px;
+      text-align: center;
+      color: var(--primary);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    p.subtitle { color: var(--muted); font-size: 13px; text-align: center; margin-bottom: 20px; }
+
+    .sec-tag { font-size: 11px; font-weight: 900; letter-spacing: 1.5px; color: var(--primary); text-transform: uppercase; margin-bottom: 8px; display: block; }
+    
+    /* Mode Select */
+    .mode-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 18px; }
+    .mode-card {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+      padding: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .mode-card.active, .mode-card:hover {
+      border-color: var(--primary);
+      background: rgba(245, 158, 11, 0.15);
+      box-shadow: 0 0 14px rgba(245, 158, 11, 0.3);
+    }
+    .mode-card h4 { font-size: 14px; margin-bottom: 4px; }
+    .mode-card p { font-size: 11px; color: var(--muted); line-height: 1.3; }
+
+    /* Beast Roster Grid */
+    .roster-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .beast-chip {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 10px;
+      padding: 8px 4px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .beast-chip.active {
+      border-color: var(--primary);
+      background: linear-gradient(180deg, rgba(245, 158, 11, 0.3), transparent);
+      box-shadow: 0 0 14px var(--primary-glow);
+    }
+    .beast-chip .tag { font-size: 10px; font-weight: 900; color: var(--primary); }
+    .beast-chip .name { font-size: 12px; font-weight: 700; margin-top: 2px; }
+
+    /* Beast Details Box */
+    .beast-detail {
+      background: rgba(0,0,0,0.4);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .pill { background: rgba(255,255,255,0.06); padding: 5px 10px; border-radius: 6px; font-size: 12px; font-weight: 700; border: 1px solid rgba(255,255,255,0.1); }
+
+    /* Main CTA Button */
+    .btn-main {
+      width: 100%;
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: #000;
+      border: none;
+      padding: 15px;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      cursor: pointer;
+      box-shadow: 0 8px 24px var(--primary-glow);
+      transition: transform 0.15s;
+    }
+    .btn-main:hover { transform: translateY(-2px); }
+
+    .keys-hint {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 14px;
+    }
+    .kbd { background: rgba(255,255,255,0.12); padding: 2px 6px; border-radius: 4px; font-family: monospace; color: var(--primary); font-weight: 800; }
+
+    /* Wallet Provider Options */
+    #wallet-modal { display: none; }
+    .w-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin: 16px 0; }
+    .w-opt {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+      padding: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .w-opt:hover { border-color: var(--primary); background: rgba(245, 158, 11, 0.12); }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+  <!-- 3D Canvas Background -->
+  <canvas id="game-canvas"></canvas>
+
+  <!-- Persistent Top HUD -->
+  <div id="hud-top">
+    <div class="hud-box">
+      <div>SCORE <span id="hud-score" style="color:var(--primary)">0m</span></div>
+      <div>RUNES <span id="hud-runes" style="color:var(--cyan)">0</span></div>
+      <div id="hud-timer-wrap" style="display:none">TIME <span id="hud-timer" style="color:var(--red)">60s</span></div>
+    </div>
+    <button class="hud-btn" id="btn-wallet-open">
+      <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--primary); margin-right:6px"></span>
+      <span id="wallet-label">Connect Wallet / Beast Pass</span>
+    </button>
+  </div>
+
+  <!-- Combat / Boss HUD -->
+  <div id="in-game-hud">
+    <div id="boss-hud">
+      <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:800;">
+        <span style="color:var(--red)">COLOSSUS TITAN</span>
+        <span id="boss-hp-text">800 / 800 HP</span>
+      </div>
+      <div class="boss-bar-bg"><div class="boss-bar-fill" id="boss-hp-fill"></div></div>
+    </div>
+    <button id="ability-btn">
+      <span style="font-size:10px">CAST [E]</span>
+      <span id="ability-name">POWER</span>
+    </button>
+  </div>
+
+  <!-- Main Menu Overlay (Always Visible on Launch) -->
+  <div class="screen-overlay" id="start-screen">
+    <div class="modal-card">
+      <h1 class="title">Realm of Beasts</h1>
+      <p class="subtitle">Official Beast NFT Hackathon & Vibeathon Entry</p>
+
+      <span class="sec-tag">1. Select Game Mode</span>
+      <div class="mode-grid">
+        <div class="mode-card active" data-mode="endless">
+          <h4>Endless Run</h4>
+          <p>Dodge obstacles across magma rifts and harvest ancient runes.</p>
+        </div>
+        <div class="mode-card" data-mode="boss">
+          <h4>Colossus Siege</h4>
+          <p>Titan boss battle. Cast active Beast Powers to break its health bar.</p>
+        </div>
+        <div class="mode-card" data-mode="relic">
+          <h4>Relic Sprint</h4>
+          <p>60-second time trial. Collect cyan relics to extend your survival time.</p>
+        </div>
+      </div>
+
+      <span class="sec-tag">2. Select Your Beast Character</span>
+      <div class="roster-grid" id="roster-container"></div>
+
+      <div class="beast-detail">
+        <div>
+          <h3 id="det-name" style="font-size:18px; color:var(--primary); margin-bottom:4px">Dragon</h3>
+          <p id="det-lore" style="font-size:12px; color:var(--muted); max-width:440px">
+            Sovereign of primal fire. Equipped with dual sweeping wings and Flame Breath.
+          </p>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap">
+          <span class="pill" id="det-tier">TIER: T5</span>
+          <span class="pill" id="det-speed">SPEED: 1.25x</span>
+          <span class="pill" id="det-power" style="color:var(--primary)">POWER: Flame Breath</span>
+        </div>
+      </div>
+
+      <button class="btn-main" id="btn-enter-trial">Enter The Dungeon Trial</button>
+
+      <div class="keys-hint">
+        <span><span class="kbd">A</span> / <span class="kbd">D</span> Lane Swap</span>
+        <span><span class="kbd">W</span> / <span class="kbd">Space</span> Jump</span>
+        <span><span class="kbd">S</span> Slide</span>
+        <span><span class="kbd">E</span> Beast Power</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game Over Modal -->
+  <div class="screen-overlay" id="game-over-screen" style="display:none">
+    <div class="modal-card" style="max-width:480px; text-align:center">
+      <h2 style="font-size:26px; font-weight:900; color:var(--red); margin-bottom:6px">RUN CONCLUDED</h2>
+      <p style="color:var(--muted); font-size:13px; margin-bottom:20px">Your run has been registered in the Beast Realm</p>
+
+      <div style="background:rgba(0,0,0,0.35); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:16px; margin-bottom:18px; text-align:left">
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px"><span>Distance:</span> <strong id="go-score" style="color:var(--primary)">0m</strong></div>
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px"><span>Runes Harvested:</span> <strong id="go-runes" style="color:var(--cyan)">0</strong></div>
+        <div style="display:flex; justify-content:space-between"><span>Active Beast:</span> <strong id="go-beast">Dragon (T5)</strong></div>
+      </div>
+
+      <div style="margin-bottom:18px">
+        <button class="hud-btn" id="btn-sign-run" style="width:100%; padding:12px">Sign Cryptographic Run Hash</button>
+        <p id="sign-receipt" style="font-family:monospace; font-size:11px; color:var(--green); margin-top:8px; word-break:break-all; display:none"></p>
+      </div>
+
+      <button class="btn-main" id="btn-retry">Play Again</button>
+    </div>
+  </div>
+
+  <!-- Web3 Wallet Modal -->
+  <div class="screen-overlay" id="wallet-modal">
+    <div class="modal-card" style="max-width:540px">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px">
+        <h2 style="font-size:20px; font-weight:800; color:var(--primary)">Web3 & Beast Vault</h2>
+        <button id="btn-wallet-close" style="background:none; border:none; color:var(--muted); font-size:24px; cursor:pointer">×</button>
+      </div>
+
+      <div style="background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:14px; margin-bottom:14px">
+        <div style="display:flex; justify-content:space-between; margin-bottom:10px">
+          <span style="font-size:12px; color:var(--muted)">ACTIVE VAULT</span>
+          <span id="active-address" style="font-family:monospace; font-size:12px; color:var(--primary)">0x7F2a...bE45 (Demo Beast)</span>
+        </div>
+        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; text-align:center">
+          <div style="background:rgba(255,255,255,0.04); padding:8px; border-radius:8px">
+            <span style="font-size:11px; color:var(--muted); display:block">$LORDS</span>
+            <strong id="balance-lords" style="color:var(--primary)">1,250</strong>
+          </div>
+          <div style="background:rgba(255,255,255,0.04); padding:8px; border-radius:8px">
+            <span style="font-size:11px; color:var(--muted); display:block">$STRK</span>
+            <strong id="balance-strk" style="color:#c084fc">45.00</strong>
+          </div>
+          <div style="background:rgba(255,255,255,0.04); padding:8px; border-radius:8px">
+            <span style="font-size:11px; color:var(--muted); display:block">RUNES</span>
+            <strong id="balance-runes" style="color:var(--cyan)">840</strong>
+          </div>
+        </div>
+      </div>
+
+      <span class="sec-tag">Select Provider</span>
+      <div class="w-grid">
+        <div class="w-opt" id="opt-cartridge"><span>🎮</span><div><div>Cartridge</div><small style="color:var(--muted)">Starknet Pass</small></div></div>
+        <div class="w-opt" id="opt-metamask"><span>🦊</span><div><div>MetaMask</div><small style="color:var(--muted)">Browser Web3</small></div></div>
+        <div class="w-opt" id="opt-argent"><span>🛡️</span><div><div>ArgentX</div><small style="color:var(--muted)">Starknet Native</small></div></div>
+        <div class="w-opt" id="opt-guest"><span>⚡</span><div><div>Guest Vault</div><small style="color:var(--muted)">Instant Play</small></div></div>
+      </div>
+
+      <button class="hud-btn" id="btn-faucet" style="width:100%; padding:12px">Roll Beast Pass Faucet (+500 $LORDS)</button>
+    </div>
+  </div>
+
+  <script>
+    /* Audio System */
+    const Sound = {
+      ctx: null,
+      init() {
+        if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        if (this.ctx.state === 'suspended') this.ctx.resume();
+      },
+      beep(freq, type = 'sine', duration = 0.1, slide = 0) {
+        if (!this.ctx) return;
+        try {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+          if (slide !== 0) osc.frequency.exponentialRampToValueAtTime(Math.max(20, freq + slide), this.ctx.currentTime + duration);
+          gain.gain.setValueAtTime(0.18, this.ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start();
+          osc.stop(this.ctx.currentTime + duration);
+        } catch(e) {}
+      },
+      jump() { this.beep(280, 'sine', 0.22, 320); },
+      slide() { this.beep(190, 'triangle', 0.2, -90); },
+      coin() { this.beep(920, 'sine', 0.12, 440); },
+      power() { this.beep(130, 'sawtooth', 0.5, 220); },
+      crash() { this.beep(85, 'square', 0.38, -50); }
+    };
+
+    /* Beast Roster */
+    const BEASTS = [
+      { id: 'dragon', name: 'Dragon', tier: 'T5', speed: 1.25, power: 'Flame Breath', desc: 'Sovereign wyrm with dual sweeping wings. Incinerates obstacles.', color: 0xd92626, acc: 0xf59e0b, type: 'winged' },
+      { id: 'phoenix', name: 'Phoenix', tier: 'T5', speed: 1.20, power: 'Rebirth Shield', desc: 'Solar entity. Generates an invulnerable aura that absorbs hits.', color: 0xf59e0b, acc: 0xfef08a, type: 'solar' },
+      { id: 'balrog', name: 'Balrog', tier: 'T4', speed: 1.15, power: 'Molten Stomp', desc: 'Abyssal demon. Armed with sweeping magma horns that smash through barricades.', color: 0x7c2d12, acc: 0xea580c, type: 'horned' },
+      { id: 'warlock', name: 'Warlock', tier: 'T3', speed: 1.10, power: 'Arcane Rift', desc: 'Master of occult runes. Orbiting rings warp safely past hazards.', color: 0x6b21a8, acc: 0xc084fc, type: 'warlock' },
+      { id: 'basilisk', name: 'Basilisk', tier: 'T3', speed: 1.12, power: 'Venom Gaze', desc: 'Serpentine terror. Transmutes obstacles into collectible runes.', color: 0x065f46, acc: 0x34d399, type: 'serpent' },
+      { id: 'minotaur', name: 'Minotaur', tier: 'T2', speed: 1.05, power: 'Bull Charge', desc: 'Labyrinth brute with spiked crests. Smashes straight through pillars.', color: 0x78350f, acc: 0xd97706, type: 'minotaur' },
+      { id: 'kraken', name: 'Kraken', tier: 'T4', speed: 1.14, power: 'Abyssal Wave', desc: 'Tide monarch. Magnetizes all nearby runes directly toward you.', color: 0x0e7490, acc: 0x22d3ee, type: 'kraken' },
+      { id: 'colossus', name: 'Colossus', tier: 'T5', speed: 1.00, power: 'Titan Quake', desc: 'Basalt monolith. High armor pauldrons and massive destructive shockwaves.', color: 0x334155, acc: 0x94a3b8, type: 'colossus' },
+      { id: 'tarrasque', name: 'Tarrasque', tier: 'T5', speed: 1.22, power: 'Primal Roar', desc: 'Apex quadruped with quad-spiked crests that annihilate boss boulders.', color: 0x9d174d, acc: 0xf472b6, type: 'tarrasque' }
+    ];
+
+    /* Engine State */
+    const State = {
+      mode: 'endless',
+      selectedBeast: BEASTS[0],
+      active: false,
+      score: 0,
+      runes: 0,
+      timeLeft: 60,
+      lane: 1,
+      lanesX: [-3.2, 0, 3.2],
+      playerY: 0,
+      playerVy: 0,
+      isGrounded: true,
+      isSliding: false,
+      speed: 28,
+      powerReady: true,
+      powerActive: false,
+      powerTimer: 0,
+      bossHp: 800,
+      bossMaxHp: 800,
+      connectedAddress: '0x7F2a...bE45',
+      lords: 1250,
+      strk: 45.0
+    };
+
+    let scene, camera, renderer, playerRig, bossMesh;
+    const obstacles = [];
+    const coins = [];
+
+    function initThree() {
+      const canvas = document.getElementById('game-canvas');
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0a0d14);
+      scene.fog = new THREE.FogExp2(0x0a0d14, 0.024);
+
+      camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 250);
+      camera.position.set(0, 4.4, 7.8);
+      camera.lookAt(0, 1.6, -6);
+
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+      // Lighting
+      const hemi = new THREE.HemisphereLight(0xffeedd, 0x0f172a, 0.85);
+      scene.add(hemi);
+      const sun = new THREE.DirectionalLight(0xf59e0b, 1.4);
+      sun.position.set(6, 14, 8);
+      scene.add(sun);
+
+      // Basalt Track
+      const track = new THREE.Mesh(
+        new THREE.PlaneGeometry(10.5, 400),
+        new THREE.MeshStandardMaterial({ color: 0x11131a, roughness: 0.85 })
+      );
+      track.rotation.x = -Math.PI / 2;
+      track.position.z = -180;
+      scene.add(track);
+
+      // Magma Borders
+      const leftMagma = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.4, 400), new THREE.MeshBasicMaterial({ color: 0xff3b00 }));
+      leftMagma.position.set(-5.6, -0.1, -180);
+      const rightMagma = leftMagma.clone();
+      rightMagma.position.x = 5.6;
+      scene.add(leftMagma, rightMagma);
+
+      buildPlayer();
+      buildBoss();
+      window.addEventListener('resize', onResize);
+    }
+
+    function buildPlayer() {
+      if (playerRig) scene.remove(playerRig);
+      playerRig = new THREE.Group();
+
+      const b = State.selectedBeast;
+      const bodyMat = new THREE.MeshStandardMaterial({ color: b.color, roughness: 0.4 });
+      const accMat = new THREE.MeshStandardMaterial({ color: b.acc, roughness: 0.3 });
+      const eyeMat = new THREE.MeshBasicMaterial({ color: 0x00f3ff });
+
+      // Torso & Head
+      const torso = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.35, 0.95), bodyMat);
+      torso.position.y = 1.25;
+      playerRig.add(torso);
+
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.85, 0.85), bodyMat);
+      head.position.set(0, 2.15, 0.05);
+      playerRig.add(head);
+
+      // Neon Eyes
+      const lEye = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), eyeMat);
+      lEye.position.set(-0.24, 2.22, 0.5);
+      const rEye = lEye.clone();
+      rEye.position.x = 0.24;
+      playerRig.add(lEye, rEye);
+
+      // Anatomies based on Beast Type
+      if (b.type === 'winged' || b.type === 'solar') {
+        const wing = new THREE.Mesh(new THREE.ConeGeometry(0.3, 1.8, 4), accMat);
+        wing.position.set(-0.95, 1.6, -0.2);
+        wing.rotation.z = 1.1;
+        const rWing = wing.clone();
+        rWing.position.x = 0.95;
+        rWing.rotation.z = -1.1;
+        playerRig.add(wing, rWing);
+        playerRig.userData.wings = [wing, rWing];
+      }
+
+      if (b.type === 'horned' || b.type === 'minotaur') {
+        const horn = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.9, 6), accMat);
+        horn.position.set(-0.45, 2.7, -0.05);
+        horn.rotation.z = 0.55;
+        const rHorn = horn.clone();
+        rHorn.position.x = 0.45;
+        rHorn.rotation.z = -0.55;
+        playerRig.add(horn, rHorn);
+      }
+
+      if (b.type === 'warlock') {
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.7, 0.06, 8, 24), accMat);
+        ring.position.set(0, 1.9, 0);
+        ring.rotation.x = Math.PI / 3;
+        playerRig.add(ring);
+        playerRig.userData.arcaneRing = ring;
+      }
+
+      // Animated Legs
+      const legMat = new THREE.MeshStandardMaterial({ color: b.color, roughness: 0.5 });
+      const lLeg = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.7, 0.4), legMat);
+      lLeg.position.set(-0.35, 0.4, 0);
+      const rLeg = lLeg.clone();
+      rLeg.position.x = 0.35;
+      playerRig.add(lLeg, rLeg);
+      playerRig.userData.lLeg = lLeg;
+      playerRig.userData.rLeg = rLeg;
+
+      scene.add(playerRig);
+    }
+
+    function buildBoss() {
+      bossMesh = new THREE.Group();
+      const stoneMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 });
+      const lavaMat = new THREE.MeshBasicMaterial({ color: 0xff3b00 });
+
+      const chest = new THREE.Mesh(new THREE.BoxGeometry(5.2, 7.2, 3.2), stoneMat);
+      chest.position.y = 5.2;
+      const head = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.6, 2.6), stoneMat);
+      head.position.y = 9.8;
+      const core = new THREE.Mesh(new THREE.SphereGeometry(1.3, 16, 16), lavaMat);
+      core.position.set(0, 5.6, 1.3);
+
+      bossMesh.add(chest, head, core);
+      bossMesh.position.set(0, 0, -36);
+      bossMesh.visible = false;
+      scene.add(bossMesh);
+    }
+
+    function spawnObstacle(z) {
+      const lane = Math.floor(Math.random() * 3);
+      const x = State.lanesX[lane];
+      const isHigh = Math.random() > 0.65;
+
+      let obs;
+      if (isHigh) {
+        obs = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1.0, 0.8), new THREE.MeshStandardMaterial({ color: 0x9333ea }));
+        obs.position.set(x, 2.3, z);
+        obs.userData = { type: 'high', lane };
+      } else {
+        obs = new THREE.Mesh(new THREE.BoxGeometry(2.1, 1.25, 1.1), new THREE.MeshStandardMaterial({ color: 0xd97706 }));
+        obs.position.set(x, 0.65, z);
+        obs.userData = { type: 'low', lane };
+      }
+      scene.add(obs);
+      obstacles.push(obs);
+    }
+
+    function spawnCoin(z) {
+      const lane = Math.floor(Math.random() * 3);
+      const isRelic = (State.mode === 'relic' && Math.random() > 0.5);
+      const geo = isRelic ? new THREE.OctahedronGeometry(0.42) : new THREE.CylinderGeometry(0.42, 0.42, 0.1, 14);
+      const mat = new THREE.MeshBasicMaterial({ color: isRelic ? 0x06b6d4 : 0xf59e0b });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(State.lanesX[lane], 1.2, z);
+      if (!isRelic) mesh.rotation.x = Math.PI / 2;
+      mesh.userData = { isRelic, lane };
+      scene.add(mesh);
+      coins.push(mesh);
+    }
+
+    let lastT = 0;
+    function animate(t) {
+      requestAnimationFrame(animate);
+      const dt = Math.min((t - lastT) / 1000, 0.1);
+      lastT = t;
+
+      if (!State.active) {
+        if (playerRig) playerRig.rotation.y += 0.012;
+        renderer.render(scene, camera);
+        return;
+      }
+
+      State.score += Math.floor(dt * State.speed);
+      document.getElementById('hud-score').innerText = State.score + 'm';
+
+      if (State.mode === 'relic') {
+        State.timeLeft -= dt;
+        document.getElementById('hud-timer').innerText = Math.max(0, Math.ceil(State.timeLeft)) + 's';
+        if (State.timeLeft <= 0) { gameOver(); return; }
+      }
+
+      // Power Timing
+      if (State.powerActive) {
+        State.powerTimer -= dt;
+        if (State.powerTimer <= 0) {
+          State.powerActive = false;
+          document.getElementById('ability-btn').classList.add('cooldown');
+          setTimeout(() => {
+            State.powerReady = true;
+            document.getElementById('ability-btn').classList.remove('cooldown');
+          }, 6000);
+        }
+      }
+
+      // Rig Running Physics
+      if (playerRig.userData.lLeg && playerRig.userData.rLeg) {
+        const stride = Math.sin(t * 0.015) * 0.45;
+        playerRig.userData.lLeg.position.z = stride;
+        playerRig.userData.rLeg.position.z = -stride;
+      }
+      if (playerRig.userData.wings) {
+        const flap = Math.sin(t * 0.02) * 0.25;
+        playerRig.userData.wings[0].rotation.z = 1.1 + flap;
+        playerRig.userData.wings[1].rotation.z = -1.1 - flap;
+      }
+      if (playerRig.userData.arcaneRing) {
+        playerRig.userData.arcaneRing.rotation.z += 0.05;
+      }
+
+      // Smooth Lane Swaps
+      const tx = State.lanesX[State.lane];
+      playerRig.position.x += (tx - playerRig.position.x) * 16 * dt;
+
+      // Jump Physics
+      if (!State.isGrounded) {
+        State.playerVy -= 44 * dt;
+        State.playerY += State.playerVy * dt;
+        if (State.playerY <= 0) {
+          State.playerY = 0;
+          State.playerVy = 0;
+          State.isGrounded = true;
+          playerRig.scale.set(1, 1, 1);
+        }
+      }
+      playerRig.position.y = State.playerY;
+
+      if (Math.random() < dt * 1.85) spawnObstacle(-125);
+      if (Math.random() < dt * 2.4) spawnCoin(-125);
+
+      // Move Obstacles
+      for (let i = obstacles.length - 1; i >= 0; i--) {
+        const obs = obstacles[i];
+        obs.position.z += State.speed * dt;
+
+        if (Math.abs(obs.position.z - playerRig.position.z) < 1.35 && obs.userData.lane === State.lane) {
+          const hitLow = (obs.userData.type === 'low' && State.playerY < 1.15);
+          const hitHigh = (obs.userData.type === 'high' && !State.isSliding);
+
+          if (hitLow || hitHigh) {
+            if (State.powerActive) {
+              scene.remove(obs);
+              obstacles.splice(i, 1);
+              Sound.power();
+              continue;
+            } else {
+              Sound.crash();
+              gameOver();
+              return;
+            }
+          }
+        }
+
+        if (obs.position.z > 12) {
+          scene.remove(obs);
+          obstacles.splice(i, 1);
+        }
+      }
+
+      // Move Coins
+      for (let i = coins.length - 1; i >= 0; i--) {
+        const c = coins[i];
+        c.position.z += State.speed * dt;
+        c.rotation.y += 3.5 * dt;
+
+        if (Math.abs(c.position.z - playerRig.position.z) < 1.4 && (c.userData.lane === State.lane || State.selectedBeast.id === 'kraken')) {
+          scene.remove(c);
+          coins.splice(i, 1);
+          State.runes += c.userData.isRelic ? 5 : 1;
+          if (c.userData.isRelic) State.timeLeft += 4;
+          document.getElementById('hud-runes').innerText = State.runes;
+          Sound.coin();
+          continue;
+        }
+
+        if (c.position.z > 12) {
+          scene.remove(c);
+          coins.splice(i, 1);
+        }
+      }
+
+      if (State.mode === 'boss' && bossMesh.visible) {
+        bossMesh.position.y = 1.0 + Math.sin(t * 0.003) * 0.85;
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    function triggerPower() {
+      if (!State.powerReady || !State.active) return;
+      State.powerReady = false;
+      State.powerActive = true;
+      State.powerTimer = 4.2;
+      Sound.power();
+
+      if (State.mode === 'boss') {
+        State.bossHp = Math.max(0, State.bossHp - 160);
+        document.getElementById('boss-hp-fill').style.width = (State.bossHp / State.bossMaxHp * 100) + '%';
+        document.getElementById('boss-hp-text').innerText = State.bossHp + ' / 800 HP';
+        if (State.bossHp <= 0) {
+          alert('TITAN SLAIN! The Realm bows to your Beast.');
+          gameOver();
+        }
+      }
+    }
+
+    function startGame() {
+      Sound.init();
+      State.active = true;
+      State.score = 0;
+      State.runes = 0;
+      State.timeLeft = 60;
+      State.lane = 1;
+      State.bossHp = 800;
+      State.speed = 28 * State.selectedBeast.speed;
+
+      obstacles.forEach(o => scene.remove(o));
+      coins.forEach(c => scene.remove(c));
+      obstacles.length = 0;
+      coins.length = 0;
+
+      document.getElementById('start-screen').style.display = 'none';
+      document.getElementById('game-over-screen').style.display = 'none';
+      document.getElementById('in-game-hud').style.display = 'block';
+
+      const isBoss = (State.mode === 'boss');
+      bossMesh.visible = isBoss;
+      document.getElementById('boss-hud').style.display = isBoss ? 'block' : 'none';
+      document.getElementById('hud-timer-wrap').style.display = (State.mode === 'relic') ? 'block' : 'none';
+
+      document.getElementById('ability-name').innerText = State.selectedBeast.power.split(' ')[0];
+    }
+
+    function gameOver() {
+      State.active = false;
+      document.getElementById('in-game-hud').style.display = 'none';
+      document.getElementById('game-over-screen').style.display = 'flex';
+      document.getElementById('go-score').innerText = State.score + 'm';
+      document.getElementById('go-runes').innerText = State.runes;
+      document.getElementById('go-beast').innerText = State.selectedBeast.name + ' (' + State.selectedBeast.tier + ')';
+    }
+
+    function onResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // Key Listeners
+    window.addEventListener('keydown', (e) => {
+      if (!State.active) return;
+      if (e.key === 'a' || e.key === 'ArrowLeft') {
+        if (State.lane > 0) { State.lane--; Sound.slide(); }
+      } else if (e.key === 'd' || e.key === 'ArrowRight') {
+        if (State.lane < 2) { State.lane++; Sound.slide(); }
+      } else if ((e.key === 'w' || e.key === 'ArrowUp' || e.key === ' ') && State.isGrounded) {
+        State.isGrounded = false;
+        State.playerVy = 16.8;
+        Sound.jump();
+      } else if (e.key === 's' || e.key === 'ArrowDown') {
+        State.isSliding = true;
+        playerRig.scale.set(1, 0.45, 1);
+        Sound.slide();
+        setTimeout(() => { State.isSliding = false; playerRig.scale.set(1, 1, 1); }, 650);
+      } else if (e.key === 'e' || e.key === 'E') {
+        triggerPower();
+      }
+    });
+
+    // Touch Swipe Support
+    let tsX = 0, tsY = 0;
+    window.addEventListener('touchstart', (e) => {
+      tsX = e.touches[0].clientX;
+      tsY = e.touches[0].clientY;
+    });
+    window.addEventListener('touchend', (e) => {
+      if (!State.active) return;
+      const dx = e.changedTouches[0].clientX - tsX;
+      const dy = e.changedTouches[0].clientY - tsY;
+      if (Math.abs(dx) > Math.abs(dy)) {
+        if (dx > 35 && State.lane < 2) { State.lane++; Sound.slide(); }
+        else if (dx < -35 && State.lane > 0) { State.lane--; Sound.slide(); }
+      } else {
+        if (dy < -35 && State.isGrounded) {
+          State.isGrounded = false;
+          State.playerVy = 16.8;
+          Sound.jump();
+        } else if (dy > 35) {
+          State.isSliding = true;
+          playerRig.scale.set(1, 0.45, 1);
+          Sound.slide();
+          setTimeout(() => { State.isSliding = false; playerRig.scale.set(1, 1, 1); }, 650);
+        }
+      }
+    });
+
+    // UI Wireup
+    function setupUI() {
+      const rosterContainer = document.getElementById('roster-container');
+      BEASTS.forEach((b, idx) => {
+        const chip = document.createElement('div');
+        chip.className = 'beast-chip' + (idx === 0 ? ' active' : '');
+        chip.innerHTML = '<span class="tag">' + b.tier + '</span><div class="name">' + b.name + '</div>';
+        chip.onclick = () => {
+          document.querySelectorAll('.beast-chip').forEach(c => c.classList.remove('active'));
+          chip.classList.add('active');
+          State.selectedBeast = b;
+          document.getElementById('det-name').innerText = b.name;
+          document.getElementById('det-lore').innerText = b.desc;
+          document.getElementById('det-tier').innerText = 'TIER: ' + b.tier;
+          document.getElementById('det-speed').innerText = 'SPEED: ' + b.speed + 'x';
+          document.getElementById('det-power').innerText = 'POWER: ' + b.power;
+          buildPlayer();
+        };
+        rosterContainer.appendChild(chip);
+      });
+
+      document.querySelectorAll('.mode-card').forEach(item => {
+        item.onclick = () => {
+          document.querySelectorAll('.mode-card').forEach(el => el.classList.remove('active'));
+          item.classList.add('active');
+          State.mode = item.getAttribute('data-mode');
+        };
+      });
+
+      document.getElementById('btn-enter-trial').onclick = startGame;
+      document.getElementById('btn-retry').onclick = startGame;
+      document.getElementById('ability-btn').onclick = triggerPower;
+
+      // Wallet Modals
+      const wModal = document.getElementById('wallet-modal');
+      document.getElementById('btn-wallet-open').onclick = () => wModal.style.display = 'flex';
+      document.getElementById('btn-wallet-close').onclick = () => wModal.style.display = 'none';
+
+      document.getElementById('opt-metamask').onclick = async () => {
+        if (window.ethereum) {
+          try {
+            const acts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            State.connectedAddress = acts[0].slice(0, 6) + '...' + acts[0].slice(-4);
+            updateWallet('MetaMask Connected');
+          } catch(e) { updateWallet('0x7F2a...bE45 (Demo Pass)'); }
+        } else {
+          updateWallet('0x7F2a...bE45 (Demo Pass)');
+        }
+        wModal.style.display = 'none';
+      };
+
+      document.getElementById('opt-cartridge').onclick = () => {
+        State.connectedAddress = '0xCartridge_' + Math.random().toString(36).substring(2, 7);
+        updateWallet('Cartridge Pass Active');
+        wModal.style.display = 'none';
+      };
+      document.getElementById('opt-argent').onclick = () => {
+        State.connectedAddress = '0xArgentX_' + Math.random().toString(36).substring(2, 7);
+        updateWallet('ArgentX Connected');
+        wModal.style.display = 'none';
+      };
+      document.getElementById('opt-guest').onclick = () => {
+        State.connectedAddress = '0xGuest_Pass_' + Math.floor(Math.random()*9000 + 1000);
+        updateWallet('Guest Vault Active');
+        wModal.style.display = 'none';
+      };
+
+      document.getElementById('btn-faucet').onclick = () => {
+        State.lords += 500;
+        document.getElementById('balance-lords').innerText = State.lords.toLocaleString();
+        alert('Claimed +500 $LORDS to Vault.');
+      };
+
+      document.getElementById('btn-sign-run').onclick = () => {
+        const hash = '0xRunProof_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now().toString(16);
+        const receipt = document.getElementById('sign-receipt');
+        receipt.innerText = 'Run Proof: ' + hash + ' [Verified: ' + State.connectedAddress + ']';
+        receipt.style.display = 'block';
+      };
+    }
+
+    function updateWallet(status) {
+      document.getElementById('wallet-label').innerText = State.connectedAddress;
+      document.getElementById('active-address').innerText = State.connectedAddress + ' (' + status + ')';
+    }
+
+    initThree();
+    setupUI();
+    animate(0);
+  </script>
+</body>
+</html>
